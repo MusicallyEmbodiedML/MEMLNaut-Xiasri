@@ -276,37 +276,36 @@ protected:
     }
 };
 
-class AudioTestApp : public AudioAppBase
+#include "src/memllib/synth/maxiPAF.hpp"
+
+class PAFSynthApp : public AudioAppBase
 {
 public:
     static constexpr size_t kN_Params = 10;
 
-    AudioTestApp() : AudioAppBase() {}
+    PAFSynthApp() : AudioAppBase() {}
 
     stereosample_t Process(const stereosample_t x) override
     {
-        if (frame++ == 48000) {
-            frame = 0;
-            nSines++;
-            nSinesRcpr = 1.f/nSines;
-            Serial.printf("N: %d\n", nSines);
-        }
-        float y = 0.f;
-        float freq=200;
-        for(size_t i=0; i < nSines; i++) {
-            y += oscs[i].sinebuf(freq);
-            freq+=10;
-        }
-        y *= nSinesRcpr;
+        float x1[1];
+        // paf0.vfr(2,0);
+        // paf0.vib(frame * 0.0001,0);
+        paf0.play(x1, 1);
+        float y = x1[0];
         stereosample_t ret { y, y };
+        frame++;
         return ret;
     }
 
     void Setup(float sample_rate, std::shared_ptr<InterfaceBase> interface) override
     {
         AudioAppBase::Setup(sample_rate, interface);
-        oscs.resize(500);
-        // Additional setup code specific to FMSynthAudioApp
+        paf0.init();
+        paf0.setsr(maxiSettings::getSampleRate(), 1);
+        paf0.freq(200, 0);
+        paf0.amp(1,0);
+        paf0.bw(2000,0);
+        // paf0.vib(2,0);
     }
 
     void ProcessParams(const std::vector<float>& params) override
@@ -318,12 +317,10 @@ public:
     }
 
 protected:
-    maxiOsc osc1;
-    std::vector<maxiOsc> oscs;
-    size_t frame=0;
-    size_t nSines=1;
-    float nSinesRcpr=1;
-    
+
+    maxiPAFOperator paf0;
+
+    float frame=0;
 
 };
 
@@ -332,7 +329,7 @@ protected:
 
 // Global objects
 std::shared_ptr<IMLInterface> interface;
-std::shared_ptr<AudioTestApp> audio_app;
+std::shared_ptr<PAFSynthApp> audio_app;
 
 // Inter-core communication
 volatile bool core_0_ready = false;
@@ -409,7 +406,7 @@ void setup()
     // Setup interface with memory barrier protection
     {
         auto temp_interface = std::make_shared<IMLInterface>();
-        temp_interface->setup(kN_InputParams, AudioTestApp::kN_Params);
+        temp_interface->setup(kN_InputParams, PAFSynthApp::kN_Params);
         MEMORY_BARRIER();
         interface = temp_interface;
         MEMORY_BARRIER();
@@ -459,7 +456,7 @@ void setup1()
 
     // Create audio app with memory barrier protection
     {
-        auto temp_audio_app = std::make_shared<AudioTestApp>();
+        auto temp_audio_app = std::make_shared<PAFSynthApp>();
         temp_audio_app->Setup(AudioDriver::GetSampleRate(), interface);
         MEMORY_BARRIER();
         audio_app = temp_audio_app;
@@ -482,4 +479,13 @@ void loop1()
 {
     // Audio app parameter processing loop
     audio_app->loop();
+}
+
+extern "C" int getentropy (void * buffer, size_t how_many) {
+    uint8_t* pBuf = (uint8_t*) buffer;
+    while(how_many--) {
+        uint8_t rand_val = rp2040.hwrand32() % UINT8_MAX;
+        *pBuf++ = rand_val;
+    }
+    return 0; // return "no error". Can also do EFAULT, EIO, ENOSYS
 }
