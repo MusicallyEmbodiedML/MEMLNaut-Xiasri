@@ -285,13 +285,24 @@ public:
 
     PAFSynthApp() : AudioAppBase() {}
 
-    stereosample_t Process(const stereosample_t x) override
+    inline stereosample_t Process(const stereosample_t x) override
     {
         float x1[1];
-        // paf0.vfr(2,0);
-        // paf0.vib(frame * 0.0001,0);
-        paf0.play(x1, 1);
+
+        paf0.play(x1, 1, paf0_freq, paf0_cf, paf0_bw, paf0_vib, paf0_vfr, 1);
         float y = x1[0];
+
+        // paf1.play(x1, 1, paf1_freq, paf1_cf, paf1_bw, 0, 0, 1);
+        // y += x1[0];
+
+        // paf2.play(x1, 1, paf1_freq, paf1_cf, paf1_bw, paf1_vib, paf1_vfr, 1);
+        // y += x1[0];
+
+        // paf2.play(x1, 1);
+        // y += x1[0];
+
+        y = y * 0.3f;
+
         stereosample_t ret { y, y };
         frame++;
         return ret;
@@ -302,10 +313,33 @@ public:
         AudioAppBase::Setup(sample_rate, interface);
         paf0.init();
         paf0.setsr(maxiSettings::getSampleRate(), 1);
-        paf0.freq(200, 0);
-        paf0.amp(1,0);
-        paf0.bw(2000,0);
-        // paf0.vib(2,0);
+        paf0.freq(100, 0);
+        // paf0.amp(1,0);
+        paf0.bw(200,0);
+        paf0.cf(210,0);
+        paf0.vfr(5,0);
+        paf0.vib(0.1,0);
+        paf0.shift(10,0);
+
+        paf1.init();
+        paf1.setsr(maxiSettings::getSampleRate(), 1);
+        paf1.freq(150, 0);
+        // paf1.amp(1,0);
+        paf1.bw(200,0);
+        paf1.cf(210,0);
+        paf1.vfr(5,0);
+        paf1.vib(0.1,0);
+        paf1.shift(10,0);
+
+        paf2.init();
+        paf2.setsr(maxiSettings::getSampleRate(), 1);
+        paf2.freq(190, 0);
+        // paf2.amp(1,0);
+        paf2.bw(500,0);
+        paf2.cf(210,0);
+        paf2.vfr(5,0);
+        paf2.vib(0.1,0);
+        paf2.shift(6,0);
     }
 
     void ProcessParams(const std::vector<float>& params) override
@@ -313,14 +347,45 @@ public:
         // // Map parameters to the synth
         // synth_.mapParameters(params);
         // //Serial.print("Params processed.");
+        // paf0_freq = 50.f + (params[0] * params[0] * 1000.f);
+        // paf1_freq = 50.f + (params[1] * params[1] * 1000.f);
 
+        paf0_cf = paf0_freq + (params[2] * params[2] * paf0_freq * 16.f);
+        paf1_cf = 50.f + (params[3] * params[3] * 1000.f);
+
+        paf0_bw = 10.f + (params[4] * paf0_freq);
+        paf1_bw = 50.f + (params[5] * 5000.f);
+
+        paf0_vib = (params[6] * params[6] * 0.9f);
+        paf1_vib = (params[7] * params[7] * 0.9f);
+
+        paf0_vfr = (params[8] * params[8]* 15.f);
+        paf1_vfr = (params[9] * params[9] * 15.f);
+
+        Serial.printf("%f %f %f %f\n", paf0_cf,  paf0_bw, paf0_vib, paf0_vfr);
     }
 
 protected:
 
     maxiPAFOperator paf0;
+    maxiPAFOperator paf1;
+    maxiPAFOperator paf2;
 
     float frame=0;
+
+    float paf0_freq = 100;
+    float paf1_freq = 101;
+    float paf0_cf = 200;
+    float paf1_cf = 250;
+
+    float paf0_bw = 100;
+    float paf1_bw = 5000;
+
+    float paf0_vib = 0;
+    float paf1_vib = 1;
+
+    float paf0_vfr = 2;
+    float paf1_vfr = 2;
 
 };
 
@@ -329,7 +394,7 @@ protected:
 
 // Global objects
 std::shared_ptr<IMLInterface> interface;
-std::shared_ptr<PAFSynthApp> audio_app;
+std::shared_ptr<PAFSynthApp> AUDIO_MEM audio_app;
 
 // Inter-core communication
 volatile bool core_0_ready = false;
@@ -429,7 +494,7 @@ void setup()
 void loop()
 {
     MEMLNaut::Instance()->loop();
-    static int blip_counter = 0;
+    static int AUDIO_MEM blip_counter = 0;
     if (blip_counter++ > 100) {
         blip_counter = 0;
         Serial.println(".");
@@ -439,7 +504,7 @@ void loop()
         // Un-blink LED
         digitalWrite(33, LOW);
     }
-    delay(10); // Add a small delay to avoid flooding the serial output
+    delay(20); // Add a small delay to avoid flooding the serial output
 }
 
 void setup1()
