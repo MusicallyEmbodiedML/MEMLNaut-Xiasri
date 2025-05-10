@@ -181,8 +181,8 @@ public:
         newInput = true;
     }
 
-    void generateAction() {
-        if (newInput) {
+    void generateAction(bool donthesitate=false) {
+        if (newInput || donthesitate) {
             newInput = false;
             std::vector<float> actorOutput;
             actorTarget->GetOutput(actorControlInput, &actorOutput);
@@ -198,7 +198,7 @@ public:
     }
 
     void optimiseSometimes() {
-        if (optimiseCounter==optimiseDivisor) {
+        if (optimiseCounter>=optimiseDivisor) {
             optimise();
             optimiseCounter=0;
         }else{
@@ -230,6 +230,11 @@ public:
         criticTarget->DrawWeights();
     }
 
+    void setOptimiseDivisor(size_t newDiv) {
+        optimiseDivisor = newDiv;
+    }
+
+
 private:
     static constexpr size_t bias=1;
 
@@ -239,7 +244,7 @@ private:
     bool newInput=false;
 
     const std::vector<ACTIVATION_FUNCTIONS> layers_activfuncs = {
-        RELU, RELU, TANH
+        RELU, RELU, SIGMOID
     };
 
     size_t stateSize;
