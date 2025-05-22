@@ -7,6 +7,9 @@
 #include "src/memlp/ReplayMemory.hpp"
 #include "src/memlp/OrnsteinUhlenbeckNoise.h"
 #include <memory>
+#include "sharedMem.hpp"
+
+#include "src/memllib/PicoDefs.hpp"
 
 #define RL_MEM __not_in_flash("rlmem")
 
@@ -23,10 +26,14 @@ class interfaceRL : public InterfaceBase
 {
 public:
 
-    void setup(size_t n_inputs, size_t n_outputs) override
+    void setup(size_t n_inputs, size_t n_outputs)
     {
-        InterfaceBase::setup(n_inputs, n_outputs);
-        stateSize = n_inputs;
+        const size_t nAudioAnalysisInputs = 4;
+        const size_t nAllInputs = n_inputs + nAudioAnalysisInputs;
+        InterfaceBase::setup(nAllInputs, n_outputs);
+
+
+        stateSize = nAllInputs;
         actionSize = n_outputs;
 
         actor_layers_nodes = {
@@ -181,6 +188,19 @@ public:
         newInput = true;
     }
 
+    void readAnalysisParameters() {
+        //read analysis parameters
+        actorControlInput[3] = READ_VOLATILE(sharedMem::f0);
+        actorControlInput[4] = READ_VOLATILE(sharedMem::f1);
+        actorControlInput[5] = READ_VOLATILE(sharedMem::f2);
+        actorControlInput[6] = READ_VOLATILE(sharedMem::f3);
+        PERIODIC_DEBUG(40, {
+            Serial.println(actorControlInput[3]);
+        })
+        newInput = true;
+        generateAction(true);
+    }
+
     void generateAction(bool donthesitate=false) {
         if (newInput || donthesitate) {
             newInput = false;
@@ -207,9 +227,13 @@ public:
     }
 
     void storeExperience(float reward) {
+        // readAnalysisParameters();
         std::vector<float> state = actorControlInput;
+        float bpf0 = READ_VOLATILE(sharedMem::f0);
+        
         //remove bias
         state.pop_back();
+        
         for(size_t i=0; i < state.size(); i++) {
             Serial.printf("%f\t", state[i]);
         }

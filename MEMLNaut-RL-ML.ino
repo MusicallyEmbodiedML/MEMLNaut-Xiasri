@@ -8,6 +8,7 @@
 #include "interfaceRL.hpp"
 #include "src/memllib/synth/maxiPAF.hpp"
 #include "hardware/structs/bus_ctrl.h"
+#include "sharedMem.hpp"
 
 #define APP_SRAM __not_in_flash("app")
 
@@ -15,6 +16,7 @@ display APP_SRAM scr;
 
 bool core1_disable_systick = true;
 bool core1_separate_stack = true;
+
 
 uint32_t get_rosc_entropy_seed(int bits) {
     uint32_t seed = 0;
@@ -72,6 +74,15 @@ public:
 
     stereosample_t __force_inline Process(const stereosample_t x) override
     {
+        const float bpf1Val = bpf1.play(x.L) * 100.f;
+        WRITE_VOLATILE(sharedMem::f0, bpf1Val);
+        const float bpf2Val = bpf2.play(x.L) * 100.f;
+        WRITE_VOLATILE(sharedMem::f1, bpf2Val);
+        const float bpf3Val = bpf3.play(x.L) * 100.f;
+        WRITE_VOLATILE(sharedMem::f2, bpf3Val);
+        const float bpf4Val = bpf4.play(x.L) * 100.f;
+        WRITE_VOLATILE(sharedMem::f3, bpf4Val);
+
         float x1[1];
 
         // const float trig = pulse.square(1);
@@ -89,27 +100,27 @@ public:
         paf2.play(x1, 1, freq2, freq2 + (paf2_cf * freq2), paf2_bw * freq2, paf2_vib, paf2_vfr, paf2_shift, 1);
         y += x1[0];
 
-        const float ph = phasorOsc.phasor(1);
-        const bool euclidNewNote = euclidean(ph, 12, euclidN, 0, 0.1f);
-        // y = y * 0.3f;
-        // const float envamp = env.play(counter==0);
-        // const float envamp = line.play(counter==0);
-        if(zxdetect.onZX(euclidNewNote)) {
-            envamp=0.2f;
-            freqIndex++;
-            if(freqIndex >= 4) {
-                freqIndex = 0;
-            }
-            arpFreq = frequencies[freqIndex];
-       }else{
-            constexpr float envdec = 0.2f/9000.f;
-            envamp -= envdec;
-            if (envamp < 0.f) {
-                envamp = 0.f;
-            }
-        }
+    //     const float ph = phasorOsc.phasor(1);
+    //     const bool euclidNewNote = euclidean(ph, 12, euclidN, 0, 0.1f);
+    //     // y = y * 0.3f;
+    //     // const float envamp = env.play(counter==0);
+    //     // const float envamp = line.play(counter==0);
+    //     if(zxdetect.onZX(euclidNewNote)) {
+    //         envamp=0.2f;
+    //         freqIndex++;
+    //         if(freqIndex >= 4) {
+    //             freqIndex = 0;
+    //         }
+    //         arpFreq = frequencies[freqIndex];
+    //    }else{
+    //         constexpr float envdec = 0.2f/9000.f;
+    //         envamp -= envdec;
+    //         if (envamp < 0.f) {
+    //             envamp = 0.f;
+    //         }
+    //     }
         // PERIODIC_DEBUG(3000, Serial.println(y);)
-        y = y * envamp* envamp;
+        // y = y * envamp* envamp;
         // counter++;
         // if(counter>=9000) {
         //     counter=0;
@@ -129,6 +140,9 @@ public:
         y = y + d1;// + d2;
         stereosample_t ret { y, y };
         frame++;
+
+
+
         return ret;
     }
 
@@ -171,6 +185,11 @@ public:
         // line.prepare(1.f,0.f,100.f,false);
         // line.triggerEnable(true);
         envamp=1.f;
+
+        bpf1.set(maxiBiquad::filterTypes::BANDPASS, 100.f, 5.f, 0.f);
+        bpf2.set(maxiBiquad::filterTypes::BANDPASS, 500.f, 5.f, 0.f);
+        bpf3.set(maxiBiquad::filterTypes::BANDPASS, 1000.f, 5.f, 0.f);
+        bpf4.set(maxiBiquad::filterTypes::BANDPASS, 4000.f, 5.f, 0.f);
     }
 
     void ProcessParams(const std::vector<float>& params) override
@@ -260,8 +279,7 @@ protected:
     float dl2mix = 0.0f;
 
     size_t counter=0;
-    const size_t nFREQs = 17;
-    const float frequencies[nFREQs] = {100, 200, 400,800, 400, 800, 100,1600,100,400,100,50,1600,200,100,800,400};
+    const float frequencies[4] = {100, 200, 400,800};
     size_t freqIndex = 0;
     size_t freqOffset = 0;
     float arpFreq=50;
@@ -275,6 +293,12 @@ protected:
     maxiTrigger zxdetect;
 
     size_t euclidN=4;
+
+    //listening
+    maxiBiquad bpf1;
+    maxiBiquad bpf2;
+    maxiBiquad bpf3;
+    maxiBiquad bpf4;
 
 };
 
@@ -297,10 +321,6 @@ volatile bool APP_SRAM interface_ready = false;
 // We're only bound to the joystick inputs (x, y, rotate)
 constexpr size_t kN_InputParams = 3;
 
-// Add these macros near other globals
-#define MEMORY_BARRIER() __sync_synchronize()
-#define WRITE_VOLATILE(var, val) do { MEMORY_BARRIER(); (var) = (val); MEMORY_BARRIER(); } while (0)
-#define READ_VOLATILE(var) ({ MEMORY_BARRIER(); typeof(var) __temp = (var); MEMORY_BARRIER(); __temp; })
 
 
 void bind_RL_interface(std::shared_ptr<interfaceRL> interface)
@@ -491,7 +511,7 @@ void loop()
 
     MEMLNaut::Instance()->loop();
     static int AUDIO_MEM blip_counter = 0;
-    if (blip_counter++ > 100) {
+    if (blip_counter++ > 30) {
         blip_counter = 0;
         Serial.println(".");
         // Blink LED
@@ -500,7 +520,8 @@ void loop()
         // Un-blink LED
         digitalWrite(33, LOW);
     }
-    delay(10); // Add a small delay to avoid flooding the serial output
+    RLInterface->readAnalysisParameters();
+    delay(20); // Add a small delay to avoid flooding the serial output
 }
 
 void setup1()
