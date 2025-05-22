@@ -74,19 +74,20 @@ public:
 
     stereosample_t __force_inline Process(const stereosample_t x) override
     {
-        float bpf1Val = bpf1.play(x.L) * 100.f;
+        float mix = x.L + x.R;
+        float bpf1Val = bpf1.play(mix) * 100.f;
         bpf1Val = bpfEnv1.play(bpf1Val);
         WRITE_VOLATILE(sharedMem::f0, bpf1Val);
 
-        float bpf2Val = bpf2.play(x.L) * 100.f;
+        float bpf2Val = bpf2.play(mix) * 100.f;
         bpf2Val = bpfEnv2.play(bpf2Val);
         WRITE_VOLATILE(sharedMem::f1, bpf2Val);
         
-        float bpf3Val = bpf3.play(x.L) * 100.f;
+        float bpf3Val = bpf3.play(mix) * 100.f;
         bpf3Val = bpfEnv3.play(bpf3Val);
         WRITE_VOLATILE(sharedMem::f2, bpf3Val);
         
-        float bpf4Val = bpf4.play(x.L) * 100.f;
+        float bpf4Val = bpf4.play(mix) * 100.f;
         bpf4Val = bpfEnv4.play(bpf4Val);
         WRITE_VOLATILE(sharedMem::f3, bpf4Val);
 
