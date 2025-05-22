@@ -74,13 +74,20 @@ public:
 
     stereosample_t __force_inline Process(const stereosample_t x) override
     {
-        const float bpf1Val = bpf1.play(x.L) * 100.f;
+        float bpf1Val = bpf1.play(x.L) * 100.f;
+        bpf1Val = bpfEnv1.play(bpf1Val);
         WRITE_VOLATILE(sharedMem::f0, bpf1Val);
-        const float bpf2Val = bpf2.play(x.L) * 100.f;
+
+        float bpf2Val = bpf2.play(x.L) * 100.f;
+        bpf2Val = bpfEnv2.play(bpf2Val);
         WRITE_VOLATILE(sharedMem::f1, bpf2Val);
-        const float bpf3Val = bpf3.play(x.L) * 100.f;
+        
+        float bpf3Val = bpf3.play(x.L) * 100.f;
+        bpf3Val = bpfEnv3.play(bpf3Val);
         WRITE_VOLATILE(sharedMem::f2, bpf3Val);
-        const float bpf4Val = bpf4.play(x.L) * 100.f;
+        
+        float bpf4Val = bpf4.play(x.L) * 100.f;
+        bpf4Val = bpfEnv4.play(bpf4Val);
         WRITE_VOLATILE(sharedMem::f3, bpf4Val);
 
         float x1[1];
@@ -299,6 +306,11 @@ protected:
     maxiBiquad bpf2;
     maxiBiquad bpf3;
     maxiBiquad bpf4;
+
+    maxiEnvelopeFollowerF bpfEnv1;
+    maxiEnvelopeFollowerF bpfEnv2;
+    maxiEnvelopeFollowerF bpfEnv3;
+    maxiEnvelopeFollowerF bpfEnv4;
 
 };
 
