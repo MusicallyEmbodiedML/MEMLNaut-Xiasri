@@ -190,12 +190,12 @@ public:
 
     void readAnalysisParameters() {
         //read analysis parameters
-        actorControlInput[3] = READ_VOLATILE(sharedMem::f0);
-        actorControlInput[4] = READ_VOLATILE(sharedMem::f1);
-        actorControlInput[5] = READ_VOLATILE(sharedMem::f2);
-        actorControlInput[6] = READ_VOLATILE(sharedMem::f3);
+        actorControlInput[0] = READ_VOLATILE(sharedMem::f0);
+        actorControlInput[1] = READ_VOLATILE(sharedMem::f1);
+        actorControlInput[2] = READ_VOLATILE(sharedMem::f2);
+        actorControlInput[3] = READ_VOLATILE(sharedMem::f3);
         PERIODIC_DEBUG(40, {
-            Serial.println(actorControlInput[3]);
+            Serial.println(actorControlInput[0]);
         })
         newInput = true;
         generateAction(true);
