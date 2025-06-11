@@ -5,7 +5,6 @@
 #include "src/memllib/audio/AudioDriver.hpp"
 #include "src/memllib/hardware/memlnaut/MEMLNaut.hpp"
 #include <memory>
-#include "IMLInterface.hpp"
 #include "interfaceRL.hpp"
 #include "src/memllib/synth/maxiPAF.hpp"
 #include "hardware/structs/bus_ctrl.h"
@@ -13,6 +12,7 @@
 #include "src/memllib/synth/OnePoleSmoother.hpp"
 #include <VFS.h>
 #include <LittleFS.h>
+#include "src/memllib/interface/PIOUART.hpp"
 
 #define APP_SRAM __not_in_flash("app")
 
@@ -44,7 +44,7 @@ public:
         smoothParams(kN_Params, 0)
      {}
 
-    
+
 
 
     stereosample_t __force_inline Process(const stereosample_t x) override
@@ -57,11 +57,11 @@ public:
         float bpf2Val = bpf2.play(mix) * 100.f;
         bpf2Val = bpfEnv2.play(bpf2Val);
         WRITE_VOLATILE(sharedMem::f1, bpf2Val);
-        
+
         float bpf3Val = bpf3.play(mix) * 100.f;
         bpf3Val = bpfEnv3.play(bpf3Val);
         WRITE_VOLATILE(sharedMem::f2, bpf3Val);
-        
+
         float bpf4Val = bpf4.play(mix) * 100.f;
         bpf4Val = bpfEnv4.play(bpf4Val);
         WRITE_VOLATILE(sharedMem::f3, bpf4Val);
@@ -72,8 +72,8 @@ public:
         dl1mix = smoothParams[0] * smoothParams[0] * 0.4f;
         dl2mix = smoothParams[1] * smoothParams[1] * 0.4f;
         dl3mix = smoothParams[2] * smoothParams[2] * 0.8f;
-        allp1fb = smoothParams[4] * 0.99f;        
-        allp2fb = smoothParams[5] * 0.99f;     
+        allp1fb = smoothParams[4] * 0.99f;
+        allp2fb = smoothParams[5] * 0.99f;
         float comb1fb = (smoothParams[6] * 0.95f);
         float comb2fb = (smoothParams[7] * 0.95f);
 
@@ -96,11 +96,11 @@ public:
 
 
         y = y + d1 + d2 + d3;
-        
+
         y = tanhf(y);
-        
+
         stereosample_t ret { y, y };
-        
+
         frame++;
 
 
@@ -120,8 +120,8 @@ public:
 
     void ProcessParams(const std::vector<float>& params) override
     {
-        neuralNetOutputs = params;   
-        
+        neuralNetOutputs = params;
+
     }
 
 protected:
@@ -136,7 +136,7 @@ protected:
     maxiReverbFilters<1000> comb2;
 
     std::vector<float> neuralNetOutputs, smoothParams;
-    
+
 
     float frame=0;
     float dl1mix = 0.0f;
@@ -166,11 +166,10 @@ protected:
 
 
 // Global objects
-std::shared_ptr<IMLInterface> APP_SRAM interfaceIML;
 std::shared_ptr<interfaceRL> APP_SRAM RLInterface;
 
 std::shared_ptr<MIDIInOut> midi_interf;
-
+std::shared_ptr<PIOUART> pio_uart;
 
 std::shared_ptr<PAFSynthApp> __scratch_y("audio") audio_app;
 
@@ -181,8 +180,8 @@ volatile bool APP_SRAM serial_ready = false;
 volatile bool APP_SRAM interface_ready = false;
 
 
-// We're only bound to the joystick inputs (x, y, rotate)
-constexpr size_t kN_InputParams = 0;
+// KASSIA: set number of serial params
+constexpr size_t kN_InputParams = 3;
 
 void like(std::shared_ptr<interfaceRL> interface) {
         static APP_SRAM std::vector<String> likemsgs = {"Wow, incredible", "Awesome", "That's amazing", "Unbelievable+","I love it!!","More of this","Yes!!!!","A-M-A-Z-I-N-G"};
@@ -214,7 +213,7 @@ void bind_RL_interface(std::shared_ptr<interfaceRL> interface)
         // String msg = msgs[rand() % msgs.size()];
         // interface->storeExperience(1.f);
         // Serial.println(msg);
-        
+
         // scr.post(msg);
         like(interface);
     });
@@ -261,7 +260,7 @@ void bind_RL_interface(std::shared_ptr<interfaceRL> interface)
         interface->setOptimiseDivisor(divisor);
         Serial.println(msg);
     });
-    
+
 
     // Set up loop callback
     MEMLNaut::Instance()->setLoopCallback([interface] () {
@@ -269,55 +268,8 @@ void bind_RL_interface(std::shared_ptr<interfaceRL> interface)
         interface->generateAction();
     });
 
-  
+
 }
-
-void bind_IML_interface(std::shared_ptr<IMLInterface> interface)
-{
-    // Set up momentary switch callbacks
-    MEMLNaut::Instance()->setMomA1Callback([interface] () {
-        interface->Randomise();
-    });
-    MEMLNaut::Instance()->setMomA2Callback([interface] () {
-        interface->ClearData();
-    });
-
-    // Set up toggle switch callbacks
-    MEMLNaut::Instance()->setTogA1Callback([interface] (bool state) {
-        interface->SetTrainingMode(state ? IMLInterface::TRAINING_MODE : IMLInterface::INFERENCE_MODE);
-    });
-    MEMLNaut::Instance()->setJoySWCallback([interface] (bool state) {
-        interface->SaveInput(state ? IMLInterface::STORE_VALUE_MODE : IMLInterface::STORE_POSITION_MODE);
-    });
-
-    // Set up ADC callbacks
-    MEMLNaut::Instance()->setJoyXCallback([interface] (float value) {
-        interface->SetInput(0, value);
-    });
-    MEMLNaut::Instance()->setJoyYCallback([interface] (float value) {
-        interface->SetInput(1, value);
-    });
-    MEMLNaut::Instance()->setJoyZCallback([interface] (float value) {
-        interface->SetInput(2, value);
-    });
-    MEMLNaut::Instance()->setRVZ1Callback([interface] (float value) {
-        // Scale value from 0-1 range to 1-3000
-        value = 1.0f + (value * 2999.0f);
-        interface->SetIterations(static_cast<size_t>(value));
-    });
-
-    // Set up loop callback
-    MEMLNaut::Instance()->setLoopCallback([interface] () {
-        interface->ProcessInput();
-    });
-
-    MEMLNaut::Instance()->setRVGain1Callback([interface] (float value) {
-        AudioDriver::setDACVolume(value);
-    });
-}
-
-enum MLMODES {IML, RL};  
-MLMODES APP_SRAM mlMode = RL;
 
 
 struct repeating_timer APP_SRAM timerDisplay;
@@ -325,7 +277,7 @@ inline bool __not_in_flash_func(displayUpdate)(__unused struct repeating_timer *
     scr.update();
     return true;
 }
-  
+
 void setup()
 {
 
@@ -361,38 +313,24 @@ void setup()
     MEMLNaut::Initialize();
     pinMode(33, OUTPUT);
 
-    switch(mlMode) {
-        case IML: {
-            {
-                auto temp_interface = std::make_shared<IMLInterface>();
-                temp_interface->setup(kN_InputParams, PAFSynthApp::kN_Params);
-                MEMORY_BARRIER();
-                interfaceIML = temp_interface;
-                MEMORY_BARRIER();
-            }
-            // Setup interface with memory barrier protection
-            WRITE_VOLATILE(interface_ready, true);
-            // Bind interface after ensuring it's fully initialized
-            bind_IML_interface(interfaceIML);
-            Serial.println("Bound IML interface to MEMLNaut.");
-        }
-        break;
-        case RL: {
-            {
-                auto temp_interface = std::make_shared<interfaceRL>();
-                temp_interface->setup(kN_InputParams, PAFSynthApp::kN_Params);
-                MEMORY_BARRIER();
-                RLInterface = temp_interface;
-                MEMORY_BARRIER();
-            }
-            // Setup interface with memory barrier protection
-            WRITE_VOLATILE(interface_ready, true);
-            // Bind interface after ensuring it's fully initialized
-            bind_RL_interface(RLInterface);
-            Serial.println("Bound RL interface to MEMLNaut.");
-        }
-        break;
-    }
+    pio_uart = std::make_shared<PIOUART>(
+        kN_InputParams,
+        Pins::SENSOR_RX,
+        Pins::SENSOR_TX
+    );
+
+    // Set up interface
+    auto temp_interface = std::make_shared<interfaceRL>();
+    temp_interface->setup(kN_InputParams, PAFSynthApp::kN_Params);
+    MEMORY_BARRIER();
+    RLInterface = temp_interface;
+    MEMORY_BARRIER();
+    // Setup interface with memory barrier protection
+    WRITE_VOLATILE(interface_ready, true);
+    // Bind interface after ensuring it's fully initialized
+    bind_RL_interface(RLInterface);
+    Serial.println("Bound RL interface to MEMLNaut.");
+
 
     midi_interf = std::make_shared<MIDIInOut>();
     midi_interf->Setup(4);
@@ -425,6 +363,16 @@ void setup()
         });
     }
 
+    // PIO UART setup and callback
+    if (pio_uart) {
+        pio_uart->RegisterCallback([RLInterface] (size_t sensor_index, float value) {
+            if (sensor_index < kN_InputParams) {
+                RLInterface->setState(sensor_index, value);
+            } else {
+                Serial.printf("Invalid sensor index: %zu\n", sensor_index);
+            }
+        });
+    }
 
     WRITE_VOLATILE(core_0_ready, true);
     while (!READ_VOLATILE(core_1_ready)) {
@@ -440,24 +388,45 @@ void setup()
 
 void loop()
 {
-        
+    static uint32_t last_1ms = 0;
+    static uint32_t last_10ms = 0;
+    static uint32_t last_1s = 0;
+    static bool led_pulse = false;
+    uint32_t current_time = millis();
 
-    MEMLNaut::Instance()->loop();
-    if (midi_interf) {
-        midi_interf->Poll();
+    // 1ms tasks
+    if (current_time - last_1ms >= 1) {
+        // PIO UART reads
+        if (pio_uart) {
+            pio_uart->Poll();
+        }
+        // MEMLNaut pots
+        MEMLNaut::Instance()->loop();
+        // MIDI reads
+        if (midi_interf) {
+            midi_interf->Poll();
+        }
+        last_1ms = current_time;
     }
-    static int AUDIO_MEM blip_counter = 0;
-    if (blip_counter++ > 30) {
-        blip_counter = 0;
-        Serial.println(".");
-        // Blink LED
+
+    // 10ms tasks
+    if (current_time - last_10ms >= 10) {
+        // Turn off LED if it was pulsed
+        if (led_pulse) {
+            digitalWrite(33, LOW);
+            led_pulse = false;
+        }
+        last_10ms = current_time;
+    }
+
+    // 1 second tasks
+    if (current_time - last_1s >= 1000) {
+        // Pulse LED on
         digitalWrite(33, HIGH);
-    } else {
-        // Un-blink LED
-        digitalWrite(33, LOW);
+        led_pulse = true;
+        Serial.println(".");
+        last_1s = current_time;
     }
-    RLInterface->readAnalysisParameters();
-    delay(20); // Add a small delay to avoid flooding the serial output
 }
 
 void setup1()
@@ -477,15 +446,9 @@ void setup1()
     {
         auto temp_audio_app = std::make_shared<PAFSynthApp>();
         std::shared_ptr<InterfaceBase> selectedInterface;
-
-        if (mlMode == IML) {
-            selectedInterface = std::dynamic_pointer_cast<InterfaceBase>(interfaceIML);
-        } else {
-            selectedInterface = std::dynamic_pointer_cast<InterfaceBase>(RLInterface);
-        }
+        selectedInterface = std::dynamic_pointer_cast<InterfaceBase>(RLInterface);
 
         temp_audio_app->Setup(AudioDriver::GetSampleRate(), selectedInterface);
-        // temp_audio_app->Setup(AudioDriver::GetSampleRate(), dynamic_cast<std::shared_ptr<InterfaceBase>> (mlMode == IML ? interfaceIML : RLInterface));
         MEMORY_BARRIER();
         audio_app = temp_audio_app;
         MEMORY_BARRIER();

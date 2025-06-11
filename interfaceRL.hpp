@@ -13,6 +13,8 @@
 
 #define RL_MEM __not_in_flash("rlmem")
 
+#define XIASRI    0
+
 
 struct trainRLItem {
     std::vector<float> state ;
@@ -28,7 +30,11 @@ public:
 
     void setup(size_t n_inputs, size_t n_outputs)
     {
+#if XIASRI
         const size_t nAudioAnalysisInputs = 4;
+#else
+        const size_t nAudioAnalysisInputs = 0;
+#endif
         const size_t nAllInputs = n_inputs + nAudioAnalysisInputs;
         InterfaceBase::setup(nAllInputs, n_outputs);
 
@@ -41,7 +47,7 @@ public:
             10, 10,
             actionSize
         };
-    
+
         critic_layers_nodes = {
             stateSize + actionSize + bias,
             10, 10,
@@ -98,7 +104,7 @@ public:
                 auto nextStateInput =  sample[i].nextState;
                 nextStateInput.push_back(1.f); // bias
                 actorTarget->GetOutput(nextStateInput, &actorOutput);
-                
+
                 //use criticTarget to estimate value of next action given next state
                 for(size_t j=0; j < stateSize; j++) {
                     criticInput[j] = sample[i].nextState[j];
@@ -109,11 +115,11 @@ public:
                 criticInput[criticInput.size()-1] = 1.f; //bias
 
                 criticTarget->GetOutput(criticInput, &criticOutput);
-        
+
                 //calculate expected reward
                 const float y = sample[i].reward + (discountFactor *  criticOutput[0]);
                 // std::cout << "[" << i << "]: y: " << y << std::endl;
-        
+
                 //use criticTarget to estimate value of next action given next state
                 for(size_t j=0; j < stateSize; j++) {
                 criticInput[j] = sample[i].state[j];
@@ -132,13 +138,13 @@ public:
 
             //TODO: size limit to this log
             criticLossLog.push_back(loss);
-        
+
             //update the actor
-        
+
             //for each memory in replay memory sample, and get grads from critic
             std::vector<float> actorLoss(actionSize, 0.f);
             std::vector<float> gradientLoss= {1.f};
-            
+
             for(size_t i = 0; i < sample.size(); i++) {
                 //use criticTarget to estimate value of next action given next state
                 for(size_t j=0; j < stateSize; j++) {
@@ -148,10 +154,10 @@ public:
                 criticInput[j+stateSize] = sample[i].action[j];
                 }
                 criticInput[criticInput.size()-1] = 1.f; //bias
-        
+
                 critic->CalcGradients(criticInput, gradientLoss);
                 std::vector<float> l0Grads = critic->m_layers[0].GetGrads();
-        
+
                 for(size_t j=0; j < actionSize; j++) {
                  actorLoss[j] = l0Grads[j+stateSize];
                 }
@@ -162,21 +168,21 @@ public:
             for(size_t j=0; j < actorLoss.size(); j++) {
                 actorLoss[j] /= sample.size();
                 actorLoss[j] = -actorLoss[j];
-                totalLoss += actorLoss[j];                
+                totalLoss += actorLoss[j];
             }
             // actorLossLog.push_back(actorLoss);
             // actorLoss = -actorLoss;
             // Serial.printf("Actor loss: %f\n", totalLoss);
-        
+
             //back propagate the actor loss
             for(size_t i = 0; i < sample.size(); i++) {
                 auto actorInput = sample[i].state;
-                actorInput.push_back(bias); 
-        
+                actorInput.push_back(bias);
+
                 actor->ApplyLoss(actorInput, actorLoss, learningRate);
                 delay(1);
             }
-        
+
             // soft update the target networks
             criticTarget->SmoothUpdateWeights(critic, smoothingAlpha);
             actorTarget->SmoothUpdateWeights(actor, smoothingAlpha);
@@ -190,6 +196,7 @@ public:
 
     void readAnalysisParameters() {
         //read analysis parameters
+#if XIASRI
         actorControlInput[0] = READ_VOLATILE(sharedMem::f0);
         actorControlInput[1] = READ_VOLATILE(sharedMem::f1);
         actorControlInput[2] = READ_VOLATILE(sharedMem::f2);
@@ -198,6 +205,7 @@ public:
             Serial.println(actorControlInput[0]);
         })
         newInput = true;
+#endif
         generateAction(true);
     }
 
@@ -230,10 +238,10 @@ public:
         // readAnalysisParameters();
         std::vector<float> state = actorControlInput;
         float bpf0 = READ_VOLATILE(sharedMem::f0);
-        
+
         //remove bias
         state.pop_back();
-        
+
         for(size_t i=0; i < state.size(); i++) {
             Serial.printf("%f\t", state[i]);
         }
@@ -289,14 +297,14 @@ private:
     std::vector<float> action;
 
     ReplayMemory<trainRLItem> replayMem;
-    
+
     std::vector<float> actorOutput, criticOutput;
     std::vector<float> criticInput;
     std::vector<float> actorControlInput;
-    
+
     std::vector<float> criticLossLog, actorLossLog, log1;
-    
-    
+
+
 };
 
 #endif // INTERFACERL_HPP
