@@ -12,7 +12,8 @@
 #include "src/memllib/synth/OnePoleSmoother.hpp"
 #include <VFS.h>
 #include <LittleFS.h>
-#include "src/memllib/interface/PIOUART.hpp"
+#include "src/memllib/interface/UARTInput.hpp"
+#include <algorithm>
 
 #define APP_SRAM __not_in_flash("app")
 
@@ -169,7 +170,7 @@ protected:
 std::shared_ptr<interfaceRL> APP_SRAM RLInterface;
 
 std::shared_ptr<MIDIInOut> midi_interf;
-std::shared_ptr<PIOUART> pio_uart;
+std::shared_ptr<UARTInput> pio_uart;
 
 std::shared_ptr<PAFSynthApp> __scratch_y("audio") audio_app;
 
@@ -181,7 +182,8 @@ volatile bool APP_SRAM interface_ready = false;
 
 
 // KASSIA: set number of serial params
-constexpr size_t kN_InputParams = 3;
+const std::vector<size_t> kSensorIndexes = {0, 1};
+constexpr size_t kN_InputParams = 2;
 
 void like(std::shared_ptr<interfaceRL> interface) {
         static APP_SRAM std::vector<String> likemsgs = {"Wow, incredible", "Awesome", "That's amazing", "Unbelievable+","I love it!!","More of this","Yes!!!!","A-M-A-Z-I-N-G"};
@@ -280,27 +282,22 @@ inline bool __not_in_flash_func(displayUpdate)(__unused struct repeating_timer *
 
 void setup()
 {
+    Serial.begin(115200);
+    while (!Serial) {}
+    Serial.println("Serial initialised.");
+    WRITE_VOLATILE(serial_ready, true);
 
-  LittleFS.begin();
-  VFS.root(LittleFS);
-
-
-
-    // FILE *fp = fopen("/thisfilelivesonflash.txt", "w");
-    // fprintf(fp, "Hello!\n");
-    // fclose(fp);
+    LittleFS.begin();
+    VFS.root(LittleFS);
 
     scr.setup();
     bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_DMA_W_BITS |
         BUSCTRL_BUS_PRIORITY_DMA_R_BITS | BUSCTRL_BUS_PRIORITY_PROC1_BITS;
 
-    uint32_t seed = get_rosc_entropy_seed(32);
+        uint32_t seed = get_rosc_entropy_seed(32);
     srand(seed);
 
-    Serial.begin(115200);
-    // while (!Serial) {}
-    Serial.println("Serial initialised.");
-    WRITE_VOLATILE(serial_ready, true);
+
     // FILE *fp = fopen("/thisfilelivesonflash.txt", "r");
     // char line[128];
     // while (fgets(line, sizeof(line), fp)) {
@@ -311,12 +308,12 @@ void setup()
 
     // Setup board
     MEMLNaut::Initialize();
-    pinMode(33, OUTPUT);
 
-    pio_uart = std::make_shared<PIOUART>(
-        kN_InputParams,
+    pio_uart = std::make_shared<UARTInput>(
+        kSensorIndexes,
         Pins::SENSOR_RX,
-        Pins::SENSOR_TX
+        Pins::SENSOR_TX,
+        115200
     );
 
     // Set up interface
@@ -365,9 +362,20 @@ void setup()
 
     // PIO UART setup and callback
     if (pio_uart) {
-        pio_uart->RegisterCallback([RLInterface] (size_t sensor_index, float value) {
-            if (sensor_index < kN_InputParams) {
-                RLInterface->setState(sensor_index, value);
+        // pio_uart->SetCallback([RLInterface] (const std::vector<float>& values) {
+        //     for (size_t i = 0; i < values.size() && i < kN_InputParams; ++i) {
+        //         Serial.print(values[i]);
+        //         Serial.print(" ");
+        //     }
+        //     Serial.println();
+        // });
+        pio_uart->SetCallback([RLInterface] (size_t sensor_index, float value) {
+            // Find param index based on kSensorIndexes
+            auto it = std::find(kSensorIndexes.begin(), kSensorIndexes.end(), sensor_index);
+            if (it != kSensorIndexes.end()) {
+                size_t param_index = std::distance(kSensorIndexes.begin(), it);
+                Serial.printf("Sensor %zu: %f\n", sensor_index, value);
+                RLInterface->setState(param_index, value);
             } else {
                 Serial.printf("Invalid sensor index: %zu\n", sensor_index);
             }
@@ -413,7 +421,7 @@ void loop()
     if (current_time - last_10ms >= 10) {
         // Turn off LED if it was pulsed
         if (led_pulse) {
-            digitalWrite(33, LOW);
+            digitalWrite(Pins::LED, LOW);
             led_pulse = false;
         }
         last_10ms = current_time;
@@ -422,7 +430,7 @@ void loop()
     // 1 second tasks
     if (current_time - last_1s >= 1000) {
         // Pulse LED on
-        digitalWrite(33, HIGH);
+        digitalWrite(Pins::LED, HIGH);
         led_pulse = true;
         Serial.println(".");
         last_1s = current_time;
