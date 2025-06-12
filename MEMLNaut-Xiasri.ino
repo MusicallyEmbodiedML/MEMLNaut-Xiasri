@@ -17,6 +17,8 @@
 
 #define APP_SRAM __not_in_flash("app")
 
+#define USE_JOYSTICK    0
+
 display APP_SRAM scr;
 
 bool core1_disable_systick = true;
@@ -180,10 +182,13 @@ volatile bool APP_SRAM core_1_ready = false;
 volatile bool APP_SRAM serial_ready = false;
 volatile bool APP_SRAM interface_ready = false;
 
-
+#if USE_JOYSTICK
+constexpr size_t kN_InputParams = 3;
+#else
 // KASSIA: set number of serial params
-const std::vector<size_t> kSensorIndexes = {0, 1};
-constexpr size_t kN_InputParams = 2;
+const std::vector<size_t> kSensorIndexes = {2, 3, 4, 5};
+constexpr size_t kN_InputParams = 4;
+#endif
 
 void like(std::shared_ptr<interfaceRL> interface) {
         static APP_SRAM std::vector<String> likemsgs = {"Wow, incredible", "Awesome", "That's amazing", "Unbelievable+","I love it!!","More of this","Yes!!!!","A-M-A-Z-I-N-G"};
@@ -242,13 +247,13 @@ void bind_RL_interface(std::shared_ptr<interfaceRL> interface)
     });
     // Set up ADC callbacks
     MEMLNaut::Instance()->setJoyXCallback([interface] (float value) {
-        // interface->setState(0, value);
+        interface->setState(0, value);
     });
     MEMLNaut::Instance()->setJoyYCallback([interface] (float value) {
-        // interface->setState(1, value);
+        interface->setState(1, value);
     });
     MEMLNaut::Instance()->setJoyZCallback([interface] (float value) {
-        // interface->setState(2, value);
+        interface->setState(2, value);
     });
 
     MEMLNaut::Instance()->setRVGain1Callback([interface] (float value) {
@@ -309,12 +314,14 @@ void setup()
     // Setup board
     MEMLNaut::Initialize();
 
+#if !USE_JOYSTICK
     pio_uart = std::make_shared<UARTInput>(
         kSensorIndexes,
         Pins::SENSOR_RX,
         Pins::SENSOR_TX,
         115200
     );
+#endif
 
     // Set up interface
     auto temp_interface = std::make_shared<interfaceRL>();
