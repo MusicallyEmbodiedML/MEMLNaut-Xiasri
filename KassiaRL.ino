@@ -5,7 +5,7 @@
 #include "src/memllib/audio/AudioDriver.hpp"
 #include "src/memllib/hardware/memlnaut/MEMLNaut.hpp"
 #include <memory>
-#include "src/memllib/interface/InterfaceRL.hpp"
+#include "src/memllib/examples/InterfaceRL.hpp"
 //#include "src/memllib/synth/maxiPAF.hpp"
 #include "hardware/structs/bus_ctrl.h"
 #include "src/memllib/utils/sharedMem.hpp"
