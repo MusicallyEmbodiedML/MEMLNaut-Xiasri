@@ -5,7 +5,7 @@
 #include "src/memllib/audio/AudioDriver.hpp"
 #include "src/memllib/hardware/memlnaut/MEMLNaut.hpp"
 #include <memory>
-#include "src/memllib/examples/InterfaceRL.hpp"
+#include "src/memllib/examples/IMLInterface.hpp"
 //#include "src/memllib/synth/maxiPAF.hpp"
 #include "hardware/structs/bus_ctrl.h"
 #include "src/memllib/utils/sharedMem.hpp"
@@ -18,7 +18,7 @@
 
 #define USE_JOYSTICK    0
 
-display APP_SRAM scr;
+std::shared_ptr<display> APP_SRAM scr;
 
 bool core1_disable_systick = true;
 bool core1_separate_stack = true;
@@ -38,7 +38,7 @@ uint32_t get_rosc_entropy_seed(int bits) {
 
 
 // Global objects
-std::shared_ptr<InterfaceRL> APP_SRAM RLInterface;
+std::shared_ptr<IMLInterface> APP_SRAM interface;
 
 std::shared_ptr<MIDIInOut> midi_interf;
 std::shared_ptr<UARTInput> pio_uart;
@@ -62,21 +62,22 @@ constexpr size_t kN_InputParams = 4;
 
 struct repeating_timer APP_SRAM timerDisplay;
 inline bool __not_in_flash_func(displayUpdate)(__unused struct repeating_timer *t) {
-    scr.update();
+    scr->update();
     return true;
 }
 
 void setup()
 {
     Serial.begin(115200);
-    //while (!Serial) {}
+    while (!Serial) {}
     Serial.println("Serial initialised.");
     WRITE_VOLATILE(serial_ready, true);
 
     LittleFS.begin();
     VFS.root(LittleFS);
 
-    scr.setup();
+    scr = std::make_shared<display>();
+    scr->setup();
     bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_DMA_W_BITS |
         BUSCTRL_BUS_PRIORITY_DMA_R_BITS | BUSCTRL_BUS_PRIORITY_PROC1_BITS;
 
@@ -105,16 +106,17 @@ void setup()
 #endif
 
     // Set up interface
-    auto temp_interface = std::make_shared<InterfaceRL>();
-    temp_interface->setup(kN_InputParams, KassiaAudioApp::kN_Params);
+    auto temp_interface = std::make_shared<IMLInterface>();
+    // Make shared pointer to scr
+    temp_interface->setup(kN_InputParams, KassiaAudioApp::kN_Params, scr);
     MEMORY_BARRIER();
-    RLInterface = temp_interface;
+    interface = temp_interface;
     MEMORY_BARRIER();
     // Setup interface with memory barrier protection
     WRITE_VOLATILE(interface_ready, true);
     // Bind interface after ensuring it's fully initialized
-    RLInterface->bind_RL_interface(scr); // Updated call
-    Serial.println("Bound RL interface to MEMLNaut.");
+    interface->bindInterface(true); // Disable joystick
+    Serial.println("Bound IML interface to MEMLNaut.");
     // Other UI init
     MEMLNaut::Instance()->setRVGain1Callback([](float value) { // Does not need 'this' or 'scr_ref'
         AudioDriver::setDACVolume(value);
@@ -125,52 +127,17 @@ void setup()
     midi_interf->Setup(4);
     midi_interf->SetMIDISendChannel(1);
     Serial.println("MIDI setup complete.");
-    if (midi_interf) {
-        midi_interf->SetCCCallback([RLInterface] (uint8_t cc_number, uint8_t cc_value) { // Capture RLInterface
-            Serial.printf("MIDI CC %d: %d\n", cc_number, cc_value);
-            switch(cc_number) {
-                case 1:
-                {
-                    RLInterface->trigger_like(); // Updated call
-                    break;
-                }
-                case 2:
-                {
-                    RLInterface->trigger_dislike(); // Updated call
-                    break;
-                }
-                case 3:
-                {
-                    RLInterface->trigger_randomiseRL(); // Updated call
-                    break;
-                }
-                case 4:
-                {
-                    RLInterface->forgetMemory();
-                    Serial.println("Memory cleared.");
-                    scr.post("What am I? A teapot?");
-                    break;
-                }
-            };
-        });
-    }
 
     // PIO UART setup and callback
     if (pio_uart) {
-        // pio_uart->SetCallback([RLInterface] (const std::vector<float>& values) {
-        //     for (size_t i = 0; i < values.size() && i < kN_InputParams; ++i) {
-        //         Serial.print(values[i]);
-        //         Serial.print(" ");
-        //     }
-        //     Serial.println();
-        // });
-        pio_uart->SetCallback([RLInterface] (size_t sensor_index, float value) {
+
+        pio_uart->SetCallback([interface] (size_t sensor_index, float value) {
             // Find param index based on kSensorIndexes
             auto it = std::find(kSensorIndexes.begin(), kSensorIndexes.end(), sensor_index);
             if (it != kSensorIndexes.end()) {
                 size_t param_index = std::distance(kSensorIndexes.begin(), it);
                 Serial.printf("Sensor %zu: %f\n", sensor_index, value);
-                RLInterface->setState(param_index, value);
+                interface->SetInput(param_index, value);
             } else {
                 Serial.printf("Invalid sensor index: %zu\n", sensor_index);
             }
@@ -183,7 +150,7 @@ void setup()
         delay(1);
     }
 
-    scr.post("MEMLNaut: let's go!");
+    scr->post("-- MEMLNAUT IML Kassia --");
     add_repeating_timer_ms(-39, displayUpdate, NULL, &timerDisplay);
 
     Serial.println("Finished initialising core 0.");
@@ -249,7 +216,7 @@ void setup1()
     {
         auto temp_audio_app = std::make_shared<KassiaAudioApp>();
         std::shared_ptr<InterfaceBase> selectedInterface;
-        selectedInterface = std::dynamic_pointer_cast<InterfaceBase>(RLInterface);
+        selectedInterface = std::dynamic_pointer_cast<InterfaceBase>(interface);
 
         temp_audio_app->Setup(AudioDriver::GetSampleRate(), selectedInterface);
         MEMORY_BARRIER();
