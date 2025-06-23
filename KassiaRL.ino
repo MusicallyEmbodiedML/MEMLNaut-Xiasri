@@ -72,7 +72,7 @@ inline bool __not_in_flash_func(displayUpdate)(__unused struct repeating_timer *
 void setup()
 {
     Serial.begin(115200);
-    while (!Serial) {}
+    //while (!Serial) {}
     Serial.println("Serial initialised.");
     WRITE_VOLATILE(serial_ready, true);
 
