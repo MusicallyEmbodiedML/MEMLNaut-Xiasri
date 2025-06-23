@@ -16,6 +16,9 @@
 #include "KassiaAudioApp.hpp"
 
 
+const char FIRMWARE_NAME[] = "-- Sensor FX - P0PR --";
+
+
 #define USE_JOYSTICK    0
 
 std::shared_ptr<display> APP_SRAM scr;
@@ -55,8 +58,8 @@ volatile bool APP_SRAM interface_ready = false;
 constexpr size_t kN_InputParams = 3;
 #else
 // KASSIA: set number of serial params
-const std::vector<size_t> kSensorIndexes = {2, 3, 4, 5};
-constexpr size_t kN_InputParams = 4;
+const std::vector<size_t> kSensorIndexes = {0,1};
+constexpr size_t kN_InputParams = 2;
 #endif
 
 
@@ -118,9 +121,9 @@ void setup()
     interface->bindInterface(true); // Disable joystick
     Serial.println("Bound IML interface to MEMLNaut.");
     // Other UI init
-    MEMLNaut::Instance()->setRVGain1Callback([](float value) { // Does not need 'this' or 'scr_ref'
-        AudioDriver::setDACVolume(value);
-    });
+    // MEMLNaut::Instance()->setRVGain1Callback([](float value) { // Does not need 'this' or 'scr_ref'
+    //     AudioDriver::setDACVolume(value);
+    // });
 
 
     midi_interf = std::make_shared<MIDIInOut>();
@@ -150,7 +153,7 @@ void setup()
         delay(1);
     }
 
-    scr->post("-- MEMLNAUT IML Kassia --");
+    scr->post(FIRMWARE_NAME);
     add_repeating_timer_ms(-39, displayUpdate, NULL, &timerDisplay);
 
     Serial.println("Finished initialising core 0.");
